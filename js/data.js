@@ -5,9 +5,66 @@
    would have) so every module always has something to render.
    ============================================================ */
 
+// Maps a sheet's real column headers to the canonical field names the
+// dashboard code reads. Add an entry per sheet key as you connect real
+// Google Sheets with different header names than the mock data schema.
+const FIELD_MAPS = {
+  dashboardCSV: {
+    Owner: "Sales Owner",
+    Source: "Lead Source",
+    Stage: "Lead Stage",
+    Payment: "Payment Qty",
+  },
+};
+
+function normalizeRows(rows, map) {
+  if (!map) return rows;
+  return rows.map((row) => {
+    const out = { ...row };
+    Object.entries(map).forEach(([canonical, actual]) => {
+      if (out[canonical] === undefined && row[actual] !== undefined) {
+        out[canonical] = row[actual];
+      }
+    });
+    return out;
+  });
+}
+
+// Converts common Google Sheets date exports (Date objects, "DD/MM/YYYY",
+// "MM/DD/YYYY", or ISO strings) into a consistent "YYYY-MM-DD" string so
+// every chart/filter that reads r.Date works regardless of sheet locale.
+function normalizeDateField(rows) {
+  return rows.map((row) => {
+    if (row.Date === undefined || row.Date === null || row.Date === "") return row;
+    const iso = toISODate(row.Date);
+    if (iso) return { ...row, Date: iso };
+    return row;
+  });
+}
+
+function toISODate(value) {
+  if (value instanceof Date && !isNaN(value)) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string") {
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const dmy = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) {
+      const day = Number(dmy[1]), month = Number(dmy[2]), year = Number(dmy[3]);
+      if (day <= 31 && month <= 12) {
+        return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+    const parsed = new Date(value);
+    if (!isNaN(parsed)) return parsed.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 const DataStore = {
   cache: {},
-  status: {},          // per-key: 'live' | 'mock' | 'loading' | 'error'
+  status: {},
   lastRefresh: null,
 
   async loadAll() {
@@ -26,7 +83,9 @@ const DataStore = {
     }
     for (let attempt = 1; attempt <= CONFIG.retryAttempts; attempt++) {
       try {
-        const rows = await this._fetchCSV(url);
+        let rows = await this._fetchCSV(url);
+        rows = normalizeRows(rows, FIELD_MAPS[key]);
+        rows = normalizeDateField(rows);
         this.cache[key] = rows;
         this.status[key] = "live";
         return rows;
@@ -70,9 +129,6 @@ const DataStore = {
 
 /* ============================================================
    MOCK DATA GENERATORS
-   Shaped like real exports: array of row objects, ISO dates,
-   numeric fields — a drop-in match for what a real published
-   sheet would provide once CONFIG.sheets.* URLs are set.
    ============================================================ */
 
 const MockData = (() => {
@@ -114,9 +170,7 @@ const MockData = (() => {
     return rows;
   }
 
-  function dashboardRows() {
-    return leadsRows(600);
-  }
+  function dashboardRows() { return leadsRows(600); }
 
   function paymentRows() {
     const regions = ["India", "USA", "APAC", "MENA", "Chat"];
@@ -205,9 +259,7 @@ const MockData = (() => {
   };
 
   return {
-    generate(key) {
-      return (generators[key] || (() => []))();
-    },
+    generate(key) { return (generators[key] || (() => []))(); },
     lists: { countries, courses, owners, sources, stages, campaigns },
   };
 })();
