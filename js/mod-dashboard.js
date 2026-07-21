@@ -294,5 +294,5 @@ const ModDashboard = {
         <div><span>vs Previous Week (avg/day)</span><b class="${leads >= (prevWeekRows.length / 7) ? 'up' : 'down'}">${Utils.fmtPercent(Utils.pctChange(leads, prevWeekRows.length / 7))}</b></div>
         <div><span>vs Previous Month (avg/day)</span><b class="${leads >= (prevMonthRows.length / 30) ? 'up' : 'down'}">${Utils.fmtPercent(Utils.pctChange(leads, prevMonthRows.length / 30))}</b></div>
       </div>`;
-  },
+  };
 };
