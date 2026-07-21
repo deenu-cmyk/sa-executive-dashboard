@@ -13,7 +13,7 @@ const CONFIG = {
 
   // ---- Data sources -----------------------------------------
   sheets: {
-    dashboardCSV:      "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZI9D3IMZQDw8Hbj_bUEh4lm8Lz8fSijp0UGeDc2IX4bM9meDEIE6FIHTjO3zxw52An93N0wiP53Ph/pub?gid=1667797721&single=true&output=csv",   // Module 1 — SA Dashboard
+    dashboardCSV:      "",   // Module 1 — SA Dashboard
     paymentTrackerCSV: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZI9D3IMZQDw8Hbj_bUEh4lm8Lz8fSijp0UGeDc2IX4bM9meDEIE6FIHTjO3zxw52An93N0wiP53Ph/pub?gid=1505225310&single=true&output=csv",   // Module 2 — Payment Tracker
     metaCSV:           "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZI9D3IMZQDw8Hbj_bUEh4lm8Lz8fSijp0UGeDc2IX4bM9meDEIE6FIHTjO3zxw52An93N0wiP53Ph/pub?gid=1927841194&single=true&output=csv",   // Module 3 — Leads: Meta
     emailMarketingCSV: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZI9D3IMZQDw8Hbj_bUEh4lm8Lz8fSijp0UGeDc2IX4bM9meDEIE6FIHTjO3zxw52An93N0wiP53Ph/pub?gid=308069155&single=true&output=csv",   // Module 3 — Leads: Email Marketing
