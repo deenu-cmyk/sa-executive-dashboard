@@ -14,7 +14,7 @@ const Charts = {
   baseOptions(overrides = {}) {
     const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--grid").trim() || "rgba(148,163,184,.15)";
     const textColor = getComputedStyle(document.documentElement).getPropertyValue("--text-muted").trim() || "#94a3b8";
-    return Chart.helpers.mergeIfNotSpecified(overrides, {
+    const base = {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -25,7 +25,21 @@ const Charts = {
         x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, font: { size: 10 } } },
         y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, font: { size: 10 } } },
       },
+    };
+    return this._deepMerge(base, overrides);
+  },
+
+  _deepMerge(base, overrides) {
+    const out = { ...base };
+    Object.keys(overrides || {}).forEach((key) => {
+      const val = overrides[key];
+      if (val && typeof val === "object" && !Array.isArray(val) && base[key] && typeof base[key] === "object") {
+        out[key] = this._deepMerge(base[key], val);
+      } else {
+        out[key] = val;
+      }
     });
+    return out;
   },
 
   line(id, labels, datasets, opts = {}) {
@@ -108,7 +122,6 @@ const Charts = {
   },
 
   funnel(id, labels, data, opts = {}) {
-    // Rendered as a horizontal bar chart, widest-first, to simulate a funnel.
     this.destroy(id);
     const ctx = document.getElementById(id);
     if (!ctx) return;
