@@ -46,6 +46,11 @@ const ModPayments = {
           { key: "Status", label: "Status", fmt: (v) => Components.statusBadge(v) },
         ])}
       </div>
+
+      <div class="panel">
+        ${Components.sectionHead("Sales Target vs Achieved", "fa-bullseye")}
+        ${this._salesTargetTable()}
+      </div>
     `;
 
     const byDate = {};
@@ -57,5 +62,64 @@ const ModPayments = {
     Charts.bar("chPayRegion", Object.keys(byRegion), [{ label: "Revenue", data: Object.values(byRegion).map((g) => Utils.sum(g, "Amount")) }]);
 
     Utils.qsa(".tab-bar .tab").forEach((btn) => btn.addEventListener("click", () => { this.activeRegion = btn.dataset.region; this.render(); }));
+  },
+
+  _salesTargetTable() {
+    const GOAL_PCT = 0.8; // 80% goal threshold
+    const all = DataStore.get("salesTargetCSV");
+    const rows = this.activeRegion === "All" ? all : all.filter((r) => r.Region === this.activeRegion);
+    if (!rows.length) return `<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No sales target data for this region.</p></div>`;
+
+    const totalTarget = Utils.sum(rows, "Target");
+    const totalAchieved = Utils.sum(rows, "Achieved");
+    const overallPct = totalTarget ? (totalAchieved / totalTarget) * 100 : 0;
+    const overallGoalGap = Math.max(0, totalTarget * GOAL_PCT - totalAchieved);
+
+    const body = rows.map((r) => {
+      const target = Number(r.Target) || 0;
+      const achieved = Number(r.Achieved) || 0;
+      const pct = target ? (achieved / target) * 100 : 0;
+      const barColor = pct >= 100 ? "#3FD98E" : pct >= 50 ? "#00C2A8" : "#FF7A59";
+      const goalGap = Math.max(0, target * GOAL_PCT - achieved);
+      const goalCell = goalGap <= 0
+        ? `<span class="badge badge-success">Goal met</span>`
+        : Utils.fmtCurrency(goalGap);
+      return `
+        <tr>
+          <td>${r.Region}</td>
+          <td>${r.Owner}</td>
+          <td>${Utils.fmtCurrency(target)}</td>
+          <td>${Utils.fmtCurrency(achieved)}</td>
+          <td>
+            <div class="target-progress">
+              <div class="target-progress-track"><div class="target-progress-fill" style="width:${Math.min(100, pct)}%; background:${barColor}"></div></div>
+              <span class="target-progress-label">${pct.toFixed(0)}%</span>
+            </div>
+          </td>
+          <td>${goalCell}</td>
+        </tr>`;
+    }).join("");
+
+    return `
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Region</th><th>Lead Owner</th><th>Target</th><th>Achieved</th><th>Progress</th><th>Needed for 80% Goal</th></tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot>
+            <tr class="target-total-row">
+              <td colspan="2">Team Total</td>
+              <td>${Utils.fmtCurrency(totalTarget)}</td>
+              <td>${Utils.fmtCurrency(totalAchieved)}</td>
+              <td>
+                <div class="target-progress">
+                  <div class="target-progress-track"><div class="target-progress-fill" style="width:${Math.min(100, overallPct)}%; background:var(--accent)"></div></div>
+                  <span class="target-progress-label">${overallPct.toFixed(0)}%</span>
+                </div>
+              </td>
+              <td>${overallGoalGap <= 0 ? `<span class="badge badge-success">Goal met</span>` : Utils.fmtCurrency(overallGoalGap)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
   },
 };
