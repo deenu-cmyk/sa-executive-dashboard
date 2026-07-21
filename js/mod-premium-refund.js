@@ -76,7 +76,7 @@ const ModRefund = {
         { label: "Approved", value: Utils.fmtNumber(approved.length), icon: "fa-circle-check" },
         { label: "Pending", value: Utils.fmtNumber(pending.length), icon: "fa-hourglass-half" },
         { label: "Rejected", value: Utils.fmtNumber(rejected.length), icon: "fa-circle-xmark" },
-        { label: "Refund Amount", value: Utils.fmtCurrency(amount), icon: "fa-sack-dollar" },
+        { label: "Refund Amount", value: Utils.fmtCurrency(amount, "USD"), icon: "fa-sack-dollar" },
         { label: "Refund %", value: Utils.fmtPercent(pct), icon: "fa-percent" },
         { label: "Avg Processing Time", value: `${avgDays.toFixed(1)}d`, icon: "fa-clock" },
       ])}
@@ -92,7 +92,7 @@ const ModRefund = {
         ${Components.sectionHead("Refund Records", "fa-table-list")}
         ${Components.dataTable(rows, [
           { key: "RefundID", label: "Refund ID" }, { key: "Date", label: "Date" }, { key: "Country", label: "Country" },
-          { key: "Course", label: "Course" }, { key: "Amount", label: "Amount", fmt: (v) => Utils.fmtCurrency(v) },
+          { key: "Course", label: "Course" }, { key: "Amount", label: "Amount", fmt: (v) => Utils.fmtCurrency(v, "USD") },
           { key: "Status", label: "Status", fmt: (v) => Components.statusBadge(v) }, { key: "Reason", label: "Reason" },
         ])}
       </div>
