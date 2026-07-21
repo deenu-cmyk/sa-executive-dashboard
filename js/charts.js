@@ -122,6 +122,7 @@ const Charts = {
   },
 
   funnel(id, labels, data, opts = {}) {
+    // Rendered as a horizontal bar chart, widest-first, to simulate a funnel.
     this.destroy(id);
     const ctx = document.getElementById(id);
     if (!ctx) return;
@@ -129,6 +130,37 @@ const Charts = {
       type: "bar",
       data: { labels, datasets: [{ data, backgroundColor: this.palette, borderRadius: 6 }] },
       options: this.baseOptions({ indexAxis: "y", plugins: { legend: { display: false } }, ...opts }),
+    });
+    return this.instances[id];
+  },
+
+  bubble(id, points, opts = {}) {
+    // points: [{ label, x, y, r, color }]
+    this.destroy(id);
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+    this.instances[id] = new Chart(ctx, {
+      type: "bubble",
+      data: {
+        datasets: points.map((p) => ({
+          label: p.label,
+          data: [{ x: p.x, y: p.y, r: p.r }],
+          backgroundColor: p.color + "aa",
+          borderColor: p.color,
+          borderWidth: 1.5,
+        })),
+      },
+      options: this.baseOptions({
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ROAS ${ctx.raw.y.toFixed(2)}x, CPL ₹${Math.round(ctx.raw.x)}`,
+            },
+          },
+        },
+        ...opts,
+      }),
     });
     return this.instances[id];
   },
