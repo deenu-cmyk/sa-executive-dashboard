@@ -7,7 +7,7 @@ const ModPayments = {
 
   render() {
     const all = DataStore.get("paymentTrackerCSV");
-    const regions = ["All", "India", "USA", "APAC", "MENA", "Chat"];
+    const regions = ["All", "India", "USA", "APAC", "EMEA", "CHAT"];
     const rows = this.activeRegion === "All" ? all : all.filter((r) => r.Region === this.activeRegion);
 
     const revenue = Utils.sum(rows, "Amount");
