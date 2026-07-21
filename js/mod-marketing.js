@@ -5,51 +5,55 @@
 const ModMarketing = {
   activeMonth: "2026-06",
   monthLabels: { "2026-04": "April 2026", "2026-05": "May 2026", "2026-06": "June 2026" },
+  monthOrder: ["2026-04", "2026-05", "2026-06"],
   spendView: "spend", // spend | roas | cpl
+  filters: { program: "", country: "" },
+  comparePrev: true,
 
   render() {
     const all = DataStore.get("marketingCSV");
-    const rows = all.filter((r) => r.Month === this.activeMonth);
+    let rows = all.filter((r) => r.Month === this.activeMonth);
+    rows = this._applyFilters(rows);
 
-    const revenue = Utils.sum(rows, "Revenue");
-    const spend = Utils.sum(rows, "Spend");
-    const profit = revenue - spend;
-    const roi = spend ? (profit / spend) * 100 : 0;
-    const roas = spend ? revenue / spend : 0;
-    const clicks = Utils.sum(rows, "Clicks");
-    const impressions = Utils.sum(rows, "Impressions");
-    const ctr = impressions ? (clicks / impressions) * 100 : 0;
-    const leads = Utils.sum(rows, "Leads");
-    const deals = Utils.sum(rows, "DealsClosed");
-    const cpl = leads ? spend / leads : 0;
-    const cpa = deals ? spend / deals : 0;
-    const aov = deals ? revenue / deals : 0;
-    const convRate = leads ? (deals / leads) * 100 : 0;
+    const prevMonth = this._prevMonth(this.activeMonth);
+    let prevRows = prevMonth ? all.filter((r) => r.Month === prevMonth) : [];
+    prevRows = this._applyFilters(prevRows);
+
+    const stats = this._aggregate(rows);
+    const prevStats = this._aggregate(prevRows);
 
     const programs = this._programStats(rows);
     const countries = this._countryStats(rows);
-    const monthly = this._monthlySeries(all);
+    const monthly = this._monthlySeries(this._applyFilters(all));
+
+    const allPrograms = [...new Set(all.map((r) => r.Program).filter(Boolean))].sort();
+    const allMarkets = [...new Set(all.map((r) => r.Country).filter(Boolean))].sort();
 
     const main = Utils.qs("#mainContent");
     main.innerHTML = `
-      <div class="tab-bar">${Object.entries(this.monthLabels).map(([k, label]) => `<button class="tab ${k === this.activeMonth ? "active" : ""}" data-month="${k}">${label}</button>`).join("")}</div>
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Month</label>
+          <select id="fMonth">${this.monthOrder.map((m) => `<option value="${m}" ${m === this.activeMonth ? "selected" : ""}>${this.monthLabels[m]}</option>`).join("")}</select>
+        </div>
+        <div class="filter-group">
+          <label>Program</label>
+          <select id="fProgram"><option value="">All Programs</option>${allPrograms.map((p) => `<option value="${p}" ${p === this.filters.program ? "selected" : ""}>${p}</option>`).join("")}</select>
+        </div>
+        <div class="filter-group">
+          <label>Market</label>
+          <select id="fMarket"><option value="">All Markets</option>${allMarkets.map((c) => `<option value="${c}" ${c === this.filters.country ? "selected" : ""}>${c}</option>`).join("")}</select>
+        </div>
+        <label class="filter-checkbox">
+          <input type="checkbox" id="fComparePrev" ${this.comparePrev ? "checked" : ""} />
+          Compare prev month
+        </label>
+        <button class="btn-reset" id="fReset"><i class="fa-solid fa-arrow-rotate-left"></i> Reset</button>
+      </div>
 
-      ${Components.kpiRow([
-        { label: "Revenue", value: Utils.fmtCurrency(revenue), icon: "fa-sack-dollar" },
-        { label: "Marketing Spend", value: Utils.fmtCurrency(spend), icon: "fa-coins" },
-        { label: "Profit", value: Utils.fmtCurrency(profit), icon: "fa-chart-line" },
-        { label: "ROI", value: Utils.fmtPercent(roi), icon: "fa-arrow-trend-up" },
-        { label: "ROAS", value: `${roas.toFixed(2)}x`, icon: "fa-bullseye" },
-        { label: "CTR", value: Utils.fmtPercent(ctr), icon: "fa-computer-mouse" },
-        { label: "CPL", value: Utils.fmtCurrency(cpl), icon: "fa-user-tag" },
-        { label: "CPA", value: Utils.fmtCurrency(cpa), icon: "fa-handshake" },
-        { label: "Avg Order Value", value: Utils.fmtCurrency(aov), icon: "fa-cart-shopping" },
-        { label: "Deals Closed", value: Utils.fmtNumber(deals), icon: "fa-award" },
-        { label: "Valid Leads", value: Utils.fmtNumber(leads), icon: "fa-user-check" },
-        { label: "Conversion Rate", value: Utils.fmtPercent(convRate), icon: "fa-percent" },
-      ])}
+      ${Components.kpiRow(this._kpiCards(stats, prevStats))}
 
-      <div class="insight-banner">${this._buildInsight(programs, monthly, roas, revenue, spend)}</div>
+      <div class="insight-banner">${this._buildInsight(programs, monthly, stats)}</div>
 
       <div class="chart-grid">
         <div class="chart-card span-6">
@@ -80,9 +84,64 @@ const ModMarketing = {
 
     this._renderCharts(programs, countries, monthly);
     this._renderRankedSpend(programs);
+    this._bindFilterBar();
+  },
 
-    Utils.qsa(".tab-bar .tab").forEach((btn) => btn.addEventListener("click", () => { this.activeMonth = btn.dataset.month; this.render(); }));
+  _bindFilterBar() {
+    Utils.qs("#fMonth").addEventListener("change", (e) => { this.activeMonth = e.target.value; this.render(); });
+    Utils.qs("#fProgram").addEventListener("change", (e) => { this.filters.program = e.target.value; this.render(); });
+    Utils.qs("#fMarket").addEventListener("change", (e) => { this.filters.country = e.target.value; this.render(); });
+    Utils.qs("#fComparePrev").addEventListener("change", (e) => { this.comparePrev = e.target.checked; this.render(); });
+    Utils.qs("#fReset").addEventListener("click", () => { this.filters = { program: "", country: "" }; this.render(); });
     Utils.qsa(".segmented-mini button").forEach((btn) => btn.addEventListener("click", () => { this.spendView = btn.dataset.view; this.render(); }));
+  },
+
+  _applyFilters(rows) {
+    let out = rows;
+    if (this.filters.program) out = out.filter((r) => r.Program === this.filters.program);
+    if (this.filters.country) out = out.filter((r) => r.Country === this.filters.country);
+    return out;
+  },
+
+  _prevMonth(month) {
+    const idx = this.monthOrder.indexOf(month);
+    return idx > 0 ? this.monthOrder[idx - 1] : null;
+  },
+
+  _aggregate(rows) {
+    const revenue = Utils.sum(rows, "Revenue");
+    const spend = Utils.sum(rows, "Spend");
+    const profit = revenue - spend;
+    const roi = spend ? (profit / spend) * 100 : 0;
+    const roas = spend ? revenue / spend : 0;
+    const clicks = Utils.sum(rows, "Clicks");
+    const impressions = Utils.sum(rows, "Impressions");
+    const ctr = impressions ? (clicks / impressions) * 100 : 0;
+    const leads = Utils.sum(rows, "Leads");
+    const deals = Utils.sum(rows, "DealsClosed");
+    const cpl = leads ? spend / leads : 0;
+    const cpa = deals ? spend / deals : 0;
+    const aov = deals ? revenue / deals : 0;
+    const convRate = leads ? (deals / leads) * 100 : 0;
+    return { revenue, spend, profit, roi, roas, ctr, cpl, cpa, aov, deals, leads, convRate };
+  },
+
+  _kpiCards(s, prev) {
+    const withTrend = (key) => this.comparePrev && prev ? Utils.pctChange(s[key], prev[key]) : undefined;
+    return [
+      { label: "Revenue", value: Utils.fmtCurrency(s.revenue), icon: "fa-sack-dollar", trend: withTrend("revenue") },
+      { label: "Marketing Spend", value: Utils.fmtCurrency(s.spend), icon: "fa-coins", trend: withTrend("spend") },
+      { label: "Profit", value: Utils.fmtCurrency(s.profit), icon: "fa-chart-line", trend: withTrend("profit") },
+      { label: "ROI", value: Utils.fmtPercent(s.roi), icon: "fa-arrow-trend-up", trend: withTrend("roi") },
+      { label: "ROAS", value: `${s.roas.toFixed(2)}x`, icon: "fa-bullseye", trend: withTrend("roas") },
+      { label: "CTR", value: Utils.fmtPercent(s.ctr), icon: "fa-computer-mouse", trend: withTrend("ctr") },
+      { label: "CPL", value: Utils.fmtCurrency(s.cpl), icon: "fa-user-tag", trend: withTrend("cpl") },
+      { label: "CPA", value: Utils.fmtCurrency(s.cpa), icon: "fa-handshake", trend: withTrend("cpa") },
+      { label: "Avg Order Value", value: Utils.fmtCurrency(s.aov), icon: "fa-cart-shopping", trend: withTrend("aov") },
+      { label: "Deals Closed", value: Utils.fmtNumber(s.deals), icon: "fa-award", trend: withTrend("deals") },
+      { label: "Valid Leads", value: Utils.fmtNumber(s.leads), icon: "fa-user-check", trend: withTrend("leads") },
+      { label: "Conversion Rate", value: Utils.fmtPercent(s.convRate), icon: "fa-percent", trend: withTrend("convRate") },
+    ];
   },
 
   _programStats(rows) {
@@ -113,8 +172,7 @@ const ModMarketing = {
   },
 
   _monthlySeries(all) {
-    const months = Object.keys(this.monthLabels);
-    return months.map((m) => {
+    return this.monthOrder.map((m) => {
       const rs = all.filter((r) => r.Month === m);
       return {
         month: m,
@@ -127,24 +185,23 @@ const ModMarketing = {
     });
   },
 
-  _buildInsight(programs, monthly, roas, revenue, spend) {
-    if (!programs.length) return `<span>No program-level data for this month yet.</span>`;
+  _buildInsight(programs, monthly, stats) {
+    if (!programs.length) return `<span>No program-level data matches the current filters.</span>`;
     const idx = monthly.findIndex((m) => m.month === this.activeMonth);
     const prev = idx > 0 ? monthly[idx - 1] : null;
-    const isBreakout = revenue > spend && prev && prev.revenue <= prev.spend;
+    const isBreakout = stats.revenue > stats.spend && prev && prev.revenue <= prev.spend;
 
     const best = [...programs].sort((a, b) => b.roas - a.roas)[0];
     const worst = [...programs].sort((a, b) => a.roas - b.roas)[0];
 
     const parts = [];
-    parts.push(`<b>${this.monthLabels[this.activeMonth]}${isBreakout ? " — breakout month" : ""}:</b> ROAS hit <b>${roas.toFixed(2)}x</b> (${Utils.fmtCurrency(revenue)} revenue vs ${Utils.fmtCurrency(spend)} spend).`);
+    parts.push(`<b>${this.monthLabels[this.activeMonth]}${isBreakout ? " — breakout month" : ""}:</b> ROAS hit <b>${stats.roas.toFixed(2)}x</b> (${Utils.fmtCurrency(stats.revenue)} revenue vs ${Utils.fmtCurrency(stats.spend)} spend).`);
     if (best) parts.push(`<b>${best.name}</b> delivered the strongest return at <b>${best.roas.toFixed(2)}x</b> ROAS.`);
     if (worst && worst.roas < 1) parts.push(`⚠ <b>${worst.name}</b> is running at only <b>${worst.roas.toFixed(2)}x</b> ROAS — worth reviewing spend allocation.`);
     return parts.join(" ");
   },
 
   _renderCharts(programs, countries, monthly) {
-    // Spend by program (toggleable)
     const valueFor = (p) => this.spendView === "spend" ? p.spend : this.spendView === "roas" ? p.roas : p.cpl;
     Charts.bar("chSpendByProgram", programs.map((p) => p.name), [{
       label: this.spendView.toUpperCase(),
@@ -152,22 +209,18 @@ const ModMarketing = {
       backgroundColor: programs.map((p) => p.color),
     }], { plugins: { legend: { display: false } } });
 
-    // Leads & deals by market
     Charts.bar("chLeadsMarket", countries.map((c) => c.name), [
       { label: "Valid Leads", data: countries.map((c) => c.leads) },
       { label: "Deals", data: countries.map((c) => c.deals) },
     ]);
 
-    // Monthly trend
     Charts.line("chMktTrend", monthly.map((m) => m.label), [
       { label: "Spend", data: monthly.map((m) => m.spend) },
       { label: "Revenue", data: monthly.map((m) => m.revenue) },
     ]);
 
-    // Revenue share donut
     Charts.donut("chRevShare", programs.map((p) => p.name), programs.map((p) => p.revenue));
 
-    // Efficiency bubble scatter
     const maxSpend = Math.max(...programs.map((p) => p.spend), 1);
     Charts.bubble("chEfficiency", programs.map((p) => ({
       label: p.name,
@@ -185,6 +238,7 @@ const ModMarketing = {
 
   _renderRankedSpend(programs) {
     const box = Utils.qs("#rankedSpend");
+    if (!programs.length) { box.innerHTML = `<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No records match the current filters.</p></div>`; return; }
     const max = Math.max(...programs.map((p) => p.spend), 1);
     box.innerHTML = programs.map((p) => `
       <div class="ranked-bar-row">
