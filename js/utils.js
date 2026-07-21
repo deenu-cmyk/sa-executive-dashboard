@@ -11,9 +11,15 @@ const Utils = {
   fmtCurrency(n, currency = "INR") {
     if (n === undefined || n === null || isNaN(n)) n = 0;
     const symbols = { INR: "₹", USD: "$", AED: "AED ", GBP: "£" };
-    const symbol = symbols[currency] || "₹";
-    if (Math.abs(n) >= 10000000) return `${symbol}${(n / 10000000).toFixed(2)}Cr`;
-    if (Math.abs(n) >= 100000) return `${symbol}${(n / 100000).toFixed(2)}L`;
+    const symbol = symbols[currency] || "$";
+    if (currency === "INR") {
+      if (Math.abs(n) >= 10000000) return `${symbol}${(n / 10000000).toFixed(2)}Cr`;
+      if (Math.abs(n) >= 100000) return `${symbol}${(n / 100000).toFixed(2)}L`;
+      if (Math.abs(n) >= 1000) return `${symbol}${(n / 1000).toFixed(1)}K`;
+      return `${symbol}${Utils.fmtNumber(n)}`;
+    }
+    if (Math.abs(n) >= 1000000000) return `${symbol}${(n / 1000000000).toFixed(2)}B`;
+    if (Math.abs(n) >= 1000000) return `${symbol}${(n / 1000000).toFixed(2)}M`;
     if (Math.abs(n) >= 1000) return `${symbol}${(n / 1000).toFixed(1)}K`;
     return `${symbol}${Utils.fmtNumber(n)}`;
   },
