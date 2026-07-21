@@ -4,14 +4,19 @@
 
 const Components = {
   kpiRow(cards) {
-    return `<div class="kpi-grid compact">${cards.map((c) => `
+    return `<div class="kpi-grid compact">${cards.map((c) => {
+      const trendClass = c.trend === undefined ? "" : c.trend > 0 ? "up" : c.trend < 0 ? "down" : "flat";
+      return `
       <div class="kpi-card">
         <div class="kpi-top">
           <div class="kpi-icon"><i class="fa-solid ${c.icon}"></i></div>
+          ${c.trend !== undefined ? `<span class="kpi-trend ${trendClass}"><i class="fa-solid fa-arrow-${c.trend >= 0 ? "up" : "down"}"></i> ${Math.abs(c.trend).toFixed(1)}%</span>` : ""}
         </div>
         <div class="kpi-value">${c.value}</div>
         <div class="kpi-label">${c.label}</div>
-      </div>`).join("")}</div>`;
+        ${c.trend !== undefined ? `<div class="kpi-sub">vs prev month</div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
   },
 
   dataTable(rows, columns, opts = {}) {
