@@ -161,9 +161,9 @@ const ModDashboard = {
     Charts.line("chLeadTrend", byMonth.labels, [{ label: "Leads", data: byMonth.leads }]);
     Charts.bar("chPaymentTrend", byMonth.labels, [{ label: "Payments", data: byMonth.payments }]);
 
-    const stageOrder = ["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won"];
     const stageGroups = Utils.groupBy(rows, "Stage");
-    Charts.funnel("chFunnel", stageOrder, stageOrder.map((s) => (stageGroups[s] || []).length));
+    const stageEntries = Object.entries(stageGroups).sort((a, b) => b[1].length - a[1].length).slice(0, 8);
+    Charts.funnel("chFunnel", stageEntries.map(([s]) => s), stageEntries.map(([, rs]) => rs.length));
 
     const sourceGroups = Utils.groupBy(rows, "Source");
     Charts.pie("chSource", Object.keys(sourceGroups), Object.values(sourceGroups).map((g) => g.length));
@@ -207,7 +207,6 @@ const ModDashboard = {
   _renderHeatmap(rows) {
     const box = Utils.qs("#heatmapBox");
     const { countries, courses } = MockData.lists;
-    const matrix = Utils.groupBy(rows, "Country");
     let max = 0;
     const grid = countries.map((c) => courses.map((co) => {
       const v = rows.filter((r) => r.Country === c && r.Course === co).length;
@@ -270,7 +269,7 @@ const ModDashboard = {
     const payments = Utils.sum(dayRows, "Payment");
     const revenue = Utils.sum(dayRows, "Revenue");
     const conv = leads ? (payments / leads) * 100 : 0;
-    const closed = dayRows.filter((r) => r.Stage === "Closed Won").length;
+    const closed = dayRows.filter((r) => Number(r.Payment) > 0 || Number(r.Revenue) > 0).length;
 
     const prevDay = new Date(dateStr); prevDay.setDate(prevDay.getDate() - 1);
     const prevDayRows = rows.filter((r) => r.Date === prevDay.toISOString().slice(0, 10));
@@ -288,7 +287,7 @@ const ModDashboard = {
         <div><span>Revenue</span><b>${Utils.fmtCurrency(revenue)}</b></div>
         <div><span>Conversion</span><b>${Utils.fmtPercent(conv)}</b></div>
         <div><span>Closed Deals</span><b>${closed}</b></div>
-        <div><span>Follow-ups</span><b>${dayRows.filter((r) => ["Contacted", "Proposal", "Negotiation"].includes(r.Stage)).length}</b></div>
+        <div><span>Follow-ups</span><b>${dayRows.filter((r) => !(Number(r.Payment) > 0 || Number(r.Revenue) > 0)).length}</b></div>
       </div>
       <div class="detail-compare">
         <div><span>vs Previous Day</span><b class="${leads >= prevDayRows.length ? 'up' : 'down'}">${Utils.fmtPercent(Utils.pctChange(leads, prevDayRows.length))}</b></div>
