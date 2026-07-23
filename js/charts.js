@@ -164,5 +164,54 @@ const Charts = {
     });
     return this.instances[id];
   },
-};
 
+  // Horizontal % achievement bar with a dashed goal-threshold reference line.
+  // Bars are colored per threshold: green >= goalPct, orange >= 50%, red below.
+  goalBar(id, labels, percents, goalPct = 80, opts = {}) {
+    this.destroy(id);
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+    const colorFor = (p) => p >= goalPct ? "#3FD98E" : p >= 50 ? "#FFC24B" : "#FF5C7A";
+    const goalLinePlugin = {
+      id: "goalLine",
+      afterDraw(chart) {
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        if (!xScale || !yScale) return;
+        const x = xScale.getPixelForValue(goalPct);
+        const ctx2d = chart.ctx;
+        ctx2d.save();
+        ctx2d.beginPath();
+        ctx2d.setLineDash([5, 4]);
+        ctx2d.moveTo(x, yScale.top);
+        ctx2d.lineTo(x, yScale.bottom);
+        ctx2d.strokeStyle = "#94A3B8";
+        ctx2d.lineWidth = 1.5;
+        ctx2d.stroke();
+        ctx2d.setLineDash([]);
+        ctx2d.fillStyle = "#94A3B8";
+        ctx2d.font = "11px Inter, sans-serif";
+        ctx2d.fillText(`Goal ${goalPct}%`, x + 6, yScale.top + 12);
+        ctx2d.restore();
+      },
+    };
+    this.instances[id] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ data: percents, backgroundColor: percents.map(colorFor), borderRadius: 6, maxBarThickness: 22 }],
+      },
+      options: this.baseOptions({
+        indexAxis: "y",
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toFixed(0)}% of target` } },
+        },
+        scales: { x: { min: 0, suggestedMax: 120, ticks: { callback: (v) => v + "%" } } },
+        ...opts,
+      }),
+      plugins: [goalLinePlugin],
+    });
+    return this.instances[id];
+  },
+};
