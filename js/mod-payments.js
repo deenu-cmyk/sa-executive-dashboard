@@ -8,23 +8,7 @@ const ModPayments = {
 
     const main = Utils.qs("#mainContent");
     main.innerHTML = `
-      <div class="panel">
-        ${Components.sectionHead("Payment Records", "fa-table-list")}
-        ${Components.dataTable(rows, [
-          // Payment ID, Date, Country, Course, Amount, and Status were removed —
-          // they weren't pulling real data yet (showing "—", "$0", "Unknown" for
-          // every row), so they were just noise. Only Region had real values.
-          // Once the CSV connection/column mapping is fixed, add the real ones
-          // back in here, e.g.:
-          // { key: "PaymentID", label: "Payment ID" },
-          // { key: "Date", label: "Date" },
-          { key: "Region", label: "Region" },
-          // { key: "Country", label: "Country" },
-          // { key: "Course", label: "Course" },
-          // { key: "Amount", label: "Amount", fmt: (v) => Utils.fmtCurrency(v, "USD") },
-          // { key: "Status", label: "Status", fmt: (v) => Components.statusBadge(v) },
-        ], { limit: 200 })}
-      </div>
+     
 
       <div class="panel">
         ${Components.sectionHead("Sales Target vs Achieved", "fa-bullseye")}
