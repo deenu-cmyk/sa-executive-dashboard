@@ -9,9 +9,9 @@
 
 const ModMarketing = {
   activeMonth: null, // set on first render to the most recent month found
+  compareMonth: undefined, // undefined = default to previous month; "__none__" = no comparison; else an explicit month key
   spendView: "spend", // spend | roas | cpl
   filters: { program: "", country: "" },
-  comparePrev: true,
 
   render() {
     const all = DataStore.get("marketingCSV");
@@ -30,12 +30,18 @@ const ModMarketing = {
     rows = this._applyFilters(rows);
 
     const idx = monthOrder.indexOf(this.activeMonth);
-    const prevMonth = idx > 0 ? monthOrder[idx - 1] : null;
-    let prevRows = prevMonth ? all.filter((r) => r.Month === prevMonth) : [];
+    const defaultPrevMonth = idx > 0 ? monthOrder[idx - 1] : "";
+    const compareMonth = this.compareMonth === "__none__"
+      ? ""
+      : (this.compareMonth && monthOrder.includes(this.compareMonth) && this.compareMonth !== this.activeMonth
+          ? this.compareMonth
+          : defaultPrevMonth);
+
+    let prevRows = compareMonth ? all.filter((r) => r.Month === compareMonth) : [];
     prevRows = this._applyFilters(prevRows);
 
     const stats = this._aggregate(rows);
-    const prevStats = this._aggregate(prevRows);
+    const prevStats = compareMonth ? this._aggregate(prevRows) : null;
 
     const programs = this._programStats(rows);
     const countries = this._countryStats(rows);
@@ -59,16 +65,21 @@ const ModMarketing = {
           <label>Market</label>
           <select id="fMarket"><option value="">All Markets</option>${allMarkets.map((c) => `<option value="${c}" ${c === this.filters.country ? "selected" : ""}>${c}</option>`).join("")}</select>
         </div>
-        <label class="filter-checkbox">
-          <input type="checkbox" id="fComparePrev" ${this.comparePrev ? "checked" : ""} />
-          Compare prev month
-        </label>
+        <div class="filter-group">
+          <label>Compare To</label>
+          <select id="fCompareMonth">
+            <option value="__none__" ${compareMonth === "" ? "selected" : ""}>No comparison</option>
+            ${monthOrder.filter((m) => m !== this.activeMonth).map((m) => `<option value="${m}" ${m === compareMonth ? "selected" : ""}>${this._monthLabel(m)}</option>`).join("")}
+          </select>
+        </div>
         <button class="btn-reset" id="fReset"><i class="fa-solid fa-arrow-rotate-left"></i> Reset</button>
       </div>
 
       ${Components.kpiRow(this._kpiCards(stats, prevStats))}
 
       <div class="insight-banner">${this._buildInsight(programs, monthly, stats)}</div>
+
+      <p class="chart-sub" style="margin: -8px 0 12px;">${compareMonth ? `Comparing <b>${this._monthLabel(this.activeMonth)}</b> vs <b>${this._monthLabel(compareMonth)}</b>` : `Showing <b>${this._monthLabel(this.activeMonth)}</b> with no comparison selected`}</p>
 
       <div class="chart-grid">
         <div class="chart-card span-6">
@@ -132,10 +143,10 @@ const ModMarketing = {
 
   _bindFilterBar() {
     Utils.qs("#fMonth").addEventListener("change", (e) => { this.activeMonth = e.target.value; this.render(); });
+    Utils.qs("#fCompareMonth").addEventListener("change", (e) => { this.compareMonth = e.target.value; this.render(); });
     Utils.qs("#fProgram").addEventListener("change", (e) => { this.filters.program = e.target.value; this.render(); });
     Utils.qs("#fMarket").addEventListener("change", (e) => { this.filters.country = e.target.value; this.render(); });
-    Utils.qs("#fComparePrev").addEventListener("change", (e) => { this.comparePrev = e.target.checked; this.render(); });
-    Utils.qs("#fReset").addEventListener("click", () => { this.filters = { program: "", country: "" }; this.render(); });
+    Utils.qs("#fReset").addEventListener("click", () => { this.filters = { program: "", country: "" }; this.compareMonth = undefined; this.render(); });
     Utils.qsa(".segmented-mini button").forEach((btn) => btn.addEventListener("click", () => { this.spendView = btn.dataset.view; this.render(); }));
   },
 
@@ -166,8 +177,8 @@ const ModMarketing = {
 
   // ROI and CPA cards removed per request. Marketing Spend now appears
   // before Revenue.
-  _kpiCards(s, prev) {
-    const withTrend = (key) => this.comparePrev && prev ? Utils.pctChange(s[key], prev[key]) : undefined;
+  _kpiCards(s, prevStats) {
+    const withTrend = (key) => prevStats ? Utils.pctChange(s[key], prevStats[key]) : undefined;
     return [
       { label: "Marketing Spend", value: Utils.fmtCurrency(s.spend, "INR"), icon: "fa-coins", trend: withTrend("spend") },
       { label: "Revenue", value: Utils.fmtCurrency(s.revenue, "INR"), icon: "fa-sack-dollar", trend: withTrend("revenue") },
