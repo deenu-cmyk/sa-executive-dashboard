@@ -1,1 +1,381 @@
+/* ============================================================
+   MODULE 5 — PREMIUM & ELITE PLAN
+   ============================================================ */
 
+const ModPremium = {
+  render() {
+    const rows = DataStore.get("premiumCSV");
+    const premium = rows.filter((r) => r.Plan === "Premium");
+    const elite = rows.filter((r) => r.Plan === "Elite");
+
+    const premiumPayments = Utils.sum(premium, "Payment");
+    const elitePayments = Utils.sum(elite, "Payment");
+    const premiumAmount = Utils.sum(premium, "Revenue");
+    const eliteAmount = Utils.sum(elite, "Revenue");
+    const growth = 6.4; // illustrative period-over-period growth
+
+    const main = Utils.qs("#mainContent");
+    main.innerHTML = `
+      ${Components.kpiRow([
+        { label: "Premium Leads", value: Utils.fmtNumber(premium.length), icon: "fa-star" },
+        { label: "Elite Leads", value: Utils.fmtNumber(elite.length), icon: "fa-crown" },
+        { label: "Premium Payments", value: Utils.fmtNumber(premiumPayments), icon: "fa-receipt" },
+        { label: "Elite Payments", value: Utils.fmtNumber(elitePayments), icon: "fa-receipt" },
+        { label: "Premium Amount", value: Utils.fmtCurrency(premiumAmount, "USD"), icon: "fa-sack-dollar" },
+        { label: "Elite Amount", value: Utils.fmtCurrency(eliteAmount, "USD"), icon: "fa-sack-dollar" },
+        { label: "Growth", value: Utils.fmtPercent(growth), icon: "fa-arrow-trend-up" },
+      ])}
+
+      <div class="chart-grid">
+        <div class="chart-card span-4"><h3>Premium vs Elite</h3><div class="chart-box"><canvas id="chPlanSplit"></canvas></div></div>
+        <div class="chart-card span-4"><h3>Country Comparison</h3><div class="chart-box"><canvas id="chPlanCountry"></canvas></div></div>
+        <div class="chart-card span-4"><h3>Course Comparison</h3><div class="chart-box"><canvas id="chPlanCourse"></canvas></div></div>
+        <div class="chart-card span-12"><h3>Payments by Lead Source</h3><div class="chart-box"><canvas id="chPlanSource"></canvas></div></div>
+      </div>
+
+      <div class="panel">
+        ${Components.sectionHead("Premium & Elite Records", "fa-table-list")}
+        ${Components.dataTable(rows, [
+          { key: "Date", label: "Date" }, { key: "Plan", label: "Plan" },
+          { key: "Country", label: "Country" }, { key: "Course", label: "Course" },
+          { key: "Source", label: "Lead Source" },
+          { key: "Revenue", label: "Amount Paid", fmt: (v) => Utils.fmtCurrency(v, "USD") },
+        ], { limit: 200 })}
+      </div>
+    `;
+
+    Charts.donut("chPlanSplit", ["Premium", "Elite"], [premium.length, elite.length]);
+
+    const countries = [...new Set(rows.map((r) => r.Country).filter(Boolean))].sort();
+    Charts.bar("chPlanCountry", countries, [
+      { label: "Premium", data: countries.map((c) => premium.filter((r) => r.Country === c).length) },
+      { label: "Elite", data: countries.map((c) => elite.filter((r) => r.Country === c).length) },
+    ]);
+
+    const courses = [...new Set(rows.map((r) => r.Course).filter(Boolean))].sort();
+    Charts.bar("chPlanCourse", courses, [
+      { label: "Premium", data: courses.map((c) => premium.filter((r) => r.Course === c).length) },
+      { label: "Elite", data: courses.map((c) => elite.filter((r) => r.Course === c).length) },
+    ]);
+
+    const sourceGroups = Utils.groupBy(rows, "Source");
+    const sourceEntries = Object.entries(sourceGroups)
+      .map(([name, rs]) => ({ name, payments: Utils.sum(rs, "Payment") }))
+      .sort((a, b) => b.payments - a.payments);
+    Charts.bar("chPlanSource", sourceEntries.map((s) => s.name), [
+      { label: "Payments", data: sourceEntries.map((s) => s.payments) },
+    ], { plugins: { legend: { display: false } } });
+  },
+};
+
+/* ============================================================
+   MODULE 6 — REFUND DASHBOARD
+   ------------------------------------------------------------
+   Expects the sheet's real columns (confirmed from the live CSV):
+     Date, Country, Course, Amount, Status,
+     "Main Refund Reason", Reason
+   Note: "Main Refund Reason" has a space in it — that's fine,
+   the code below reads it with bracket notation, no rename needed.
+   ============================================================ */
+
+const ModRefund = {
+  showRecords: false, // Refund Records table is collapsed by default
+
+  // Comparison 1 = primary period shown on the KPI cards / charts / table.
+  // Comparison 2 = optional period to compare against (adds trend arrows).
+  // preset is one of the keys in _PRESETS, plus "all" (Comparison 1 only,
+  // meaning no date filter) and "none" (Comparison 2 only, meaning don't
+  // compare). start/end are "YYYY-MM-DD" strings used only when preset
+  // is "custom".
+  compare1: { preset: "all", start: "", end: "" },
+  compare2: { preset: "none", start: "", end: "" },
+
+  _PRESETS: [
+    { id: "yesterday", label: "Yesterday" },
+    { id: "today", label: "Today" },
+    { id: "tomorrow", label: "Tomorrow" },
+    { id: "last_week", label: "Last Week" },
+    { id: "this_week", label: "This Week" },
+    { id: "next_week", label: "Next Week" },
+    { id: "last_7_days", label: "Last 7 Days" },
+    { id: "next_7_days", label: "Next 7 Days" },
+    { id: "last_month", label: "Last Month" },
+    { id: "last_30_days", label: "Last 30 Days" },
+    { id: "this_month", label: "This Month" },
+    { id: "next_month", label: "Next Month" },
+    { id: "last_year", label: "Last Year" },
+    { id: "this_year", label: "This Year" },
+  ],
+
+  render() {
+    const all = DataStore.get("refundCSV");
+
+    const range1 = this._resolveRange(this.compare1.preset, this.compare1.start, this.compare1.end);
+    const range2 = this.compare2.preset === "none" ? null : this._resolveRange(this.compare2.preset, this.compare2.start, this.compare2.end);
+
+    const rows = range1 ? all.filter((r) => this._inRange(r.Date, range1)) : all;
+    const compareRows = range2 ? all.filter((r) => this._inRange(r.Date, range2)) : null;
+
+    const stats = this._aggregateStats(rows);
+    const compareStats = compareRows ? this._aggregateStats(compareRows) : null;
+    const withTrend = (key) => compareStats ? Utils.pctChange(stats[key], compareStats[key]) : undefined;
+
+    const reasonGroups = this._groupByReason(rows);
+
+    const label1 = this._presetLabel(this.compare1.preset, range1);
+    const label2 = range2 ? this._presetLabel(this.compare2.preset, range2) : null;
+    const comparisonCaption = label2
+      ? `Comparing <b>${label1}</b> vs <b>${label2}</b>`
+      : `Showing <b>${label1}</b> with no comparison selected`;
+
+    const main = Utils.qs("#mainContent");
+    main.innerHTML = `
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Comparison 1</label>
+          <select id="fCompare1">${this._presetOptions(this.compare1.preset, true)}</select>
+        </div>
+        ${this.compare1.preset === "custom" ? `
+        <div class="filter-group">
+          <label>Custom Range 1</label>
+          <div class="date-range-inputs" style="display:flex;align-items:center;gap:6px;">
+            <input type="date" id="fCompare1Start" value="${this.compare1.start || ""}" />
+            <span style="opacity:.6;">to</span>
+            <input type="date" id="fCompare1End" value="${this.compare1.end || ""}" />
+          </div>
+        </div>` : ""}
+        <div class="filter-group">
+          <label>Comparison 2</label>
+          <select id="fCompare2">${this._presetOptions(this.compare2.preset, false)}</select>
+        </div>
+        ${this.compare2.preset === "custom" ? `
+        <div class="filter-group">
+          <label>Custom Range 2</label>
+          <div class="date-range-inputs" style="display:flex;align-items:center;gap:6px;">
+            <input type="date" id="fCompare2Start" value="${this.compare2.start || ""}" />
+            <span style="opacity:.6;">to</span>
+            <input type="date" id="fCompare2End" value="${this.compare2.end || ""}" />
+          </div>
+        </div>` : ""}
+        <button class="btn-reset" id="fRefundReset"><i class="fa-solid fa-arrow-rotate-left"></i> Reset</button>
+      </div>
+
+      ${Components.kpiRow([
+        { label: "Refund Requests", value: Utils.fmtNumber(stats.count), icon: "fa-rotate-left", trend: withTrend("count") },
+        { label: "Total Amount", value: Utils.fmtCurrency(stats.totalAmount, "USD"), icon: "fa-sack-dollar", trend: withTrend("totalAmount") },
+        { label: "Approved", value: Utils.fmtNumber(stats.approvedCount), icon: "fa-circle-check", trend: withTrend("approvedCount") },
+        { label: "Pending", value: Utils.fmtNumber(stats.pendingCount), icon: "fa-clock", trend: withTrend("pendingCount") },
+        { label: "Rejected", value: Utils.fmtNumber(stats.rejectedCount), icon: "fa-circle-xmark", trend: withTrend("rejectedCount") },
+        { label: "Approval Rate", value: Utils.fmtPercent(stats.approvalRate), icon: "fa-bullseye", trend: withTrend("approvalRate") },
+        { label: "Oldest Pending", value: stats.pendingCount ? `${stats.oldestPendingDays} day${stats.oldestPendingDays !== 1 ? "s" : ""}` : "—", icon: "fa-hourglass-half" },
+      ])}
+
+      <p class="chart-sub" style="margin: -8px 0 12px;">${comparisonCaption}</p>
+
+      <div class="panel">
+        ${Components.sectionHead("Refund Reasons", "fa-list-ul")}
+        ${this._reasonList(reasonGroups, rows.length)}
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-card span-6"><h3>By Country</h3><div class="chart-box"><canvas id="chRefundCountry"></canvas></div></div>
+        <div class="chart-card span-6"><h3>By Status</h3><div class="chart-box"><canvas id="chRefundStatus"></canvas></div></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          ${Components.sectionHead(`Refund Records (${Utils.fmtNumber(rows.length)})`, "fa-table-list")}
+          <button class="btn-reset" id="toggleRefundRecords"><i class="fa-solid fa-${this.showRecords ? "eye-slash" : "eye"}"></i> ${this.showRecords ? "Hide" : "Show"} Refund Records</button>
+        </div>
+        ${this.showRecords ? Components.dataTable(rows.map((r) => ({ ...r, "Waiting Period": this._waitingLabel(r) })), [
+          { key: "Date", label: "Date" },
+          { key: "Country", label: "Country" },
+          { key: "Course", label: "Course" },
+          { key: "Amount", label: "Amount", fmt: (v) => Utils.fmtCurrency(this._parseCurrency(v), "USD") },
+          { key: "Status", label: "Status", fmt: (v) => Components.statusBadge(v) },
+          { key: "Waiting Period", label: "Waiting Period" },
+          { key: "Main Refund Reason", label: "Reason" },
+        ], { limit: 200 }) : `<p class="chart-sub" style="margin-top:8px;">Hidden by default. Click "Show Refund Records" above to see the raw rows.</p>`}
+      </div>
+    `;
+
+    this._renderCharts(rows);
+    this._bindFilterBar();
+  },
+
+  _bindFilterBar() {
+    Utils.qs("#fCompare1").addEventListener("change", (e) => { this.compare1.preset = e.target.value; this.render(); });
+    Utils.qs("#fCompare2").addEventListener("change", (e) => { this.compare2.preset = e.target.value; this.render(); });
+
+    const c1s = Utils.qs("#fCompare1Start"), c1e = Utils.qs("#fCompare1End");
+    if (c1s) c1s.addEventListener("change", (e) => { this.compare1.start = e.target.value; this.render(); });
+    if (c1e) c1e.addEventListener("change", (e) => { this.compare1.end = e.target.value; this.render(); });
+
+    const c2s = Utils.qs("#fCompare2Start"), c2e = Utils.qs("#fCompare2End");
+    if (c2s) c2s.addEventListener("change", (e) => { this.compare2.start = e.target.value; this.render(); });
+    if (c2e) c2e.addEventListener("change", (e) => { this.compare2.end = e.target.value; this.render(); });
+
+    Utils.qs("#fRefundReset").addEventListener("click", () => {
+      this.compare1 = { preset: "all", start: "", end: "" };
+      this.compare2 = { preset: "none", start: "", end: "" };
+      this.render();
+    });
+
+    Utils.qs("#toggleRefundRecords").addEventListener("click", () => { this.showRecords = !this.showRecords; this.render(); });
+  },
+
+  // ---- Comparison 1 / Comparison 2 preset resolution ------------------------------------------------
+
+  _presetOptions(selected, isPrimary) {
+    const list = isPrimary
+      ? [{ id: "all", label: "All Time" }, { id: "custom", label: "Custom" }, ...this._PRESETS]
+      : [{ id: "none", label: "No Comparison" }, { id: "custom", label: "Custom" }, ...this._PRESETS];
+    return list.map((p) => `<option value="${p.id}" ${p.id === selected ? "selected" : ""}>${p.label}</option>`).join("");
+  },
+
+  _resolveRange(key, start, end) {
+    if (key === "all" || key === "none") return null;
+    if (key === "custom") return (start && end) ? { start: this._dateOnly(start), end: this._dateOnly(end) } : null;
+
+    const today = this._dateOnly(new Date());
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const startOfWeek = (d) => addDays(d, -d.getDay());
+    const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+    const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+    switch (key) {
+      case "yesterday": { const y = addDays(today, -1); return { start: y, end: y }; }
+      case "today": return { start: today, end: today };
+      case "tomorrow": { const t = addDays(today, 1); return { start: t, end: t }; }
+      case "last_week": { const ws = startOfWeek(today); return { start: addDays(ws, -7), end: addDays(ws, -1) }; }
+      case "this_week": { const ws = startOfWeek(today); return { start: ws, end: addDays(ws, 6) }; }
+      case "next_week": { const ws = startOfWeek(today); return { start: addDays(ws, 7), end: addDays(ws, 13) }; }
+      case "last_7_days": return { start: addDays(today, -6), end: today };
+      case "next_7_days": return { start: today, end: addDays(today, 6) };
+      case "last_month": { const lmEnd = addDays(startOfMonth(today), -1); return { start: startOfMonth(lmEnd), end: lmEnd }; }
+      case "last_30_days": return { start: addDays(today, -29), end: today };
+      case "this_month": return { start: startOfMonth(today), end: endOfMonth(today) };
+      case "next_month": { const nm = new Date(today.getFullYear(), today.getMonth() + 1, 1); return { start: nm, end: endOfMonth(nm) }; }
+      case "last_year": { const y = today.getFullYear() - 1; return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) }; }
+      case "this_year": return { start: new Date(today.getFullYear(), 0, 1), end: new Date(today.getFullYear(), 11, 31) };
+      default: return null;
+    }
+  },
+
+  _presetLabel(key, range) {
+    const labels = { all: "All Time", none: "No Comparison", custom: "Custom" };
+    this._PRESETS.forEach((p) => { labels[p.id] = p.label; });
+    if (key === "custom" && range) {
+      const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      return `${fmt(range.start)} – ${fmt(range.end)}`;
+    }
+    return labels[key] || key;
+  },
+
+  _dateOnly(val) {
+    const d = new Date(val);
+    if (isNaN(d)) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  },
+
+  _inRange(dateVal, range) {
+    if (!range) return true;
+    const d = this._dateOnly(dateVal);
+    return d && d >= range.start && d <= range.end;
+  },
+
+  _aggregateStats(rows) {
+    const totalAmount = rows.reduce((s, r) => s + this._parseCurrency(r.Amount), 0);
+    const approved = rows.filter((r) => String(r.Status).toLowerCase() === "approved");
+    const pending = rows.filter((r) => String(r.Status).toLowerCase() === "pending");
+    const rejected = rows.filter((r) => String(r.Status).toLowerCase() === "rejected");
+    const approvalRate = rows.length ? (approved.length / rows.length) * 100 : 0;
+    const oldestPendingDays = pending.length ? Math.max(...pending.map((r) => this._daysSince(r.Date) || 0)) : 0;
+    return {
+      count: rows.length,
+      totalAmount,
+      approvedCount: approved.length,
+      pendingCount: pending.length,
+      rejectedCount: rejected.length,
+      approvalRate,
+      oldestPendingDays,
+    };
+  },
+
+  // ---- bullet-point reason list (no chart, per request) ------------------------------------------------
+
+  _groupByReason(rows) {
+    const map = {};
+    rows.forEach((r) => {
+      const reason = (r["Main Refund Reason"] || "Uncategorized").toString().trim();
+      if (!map[reason]) map[reason] = { count: 0, amount: 0 };
+      map[reason].count += 1;
+      map[reason].amount += this._parseCurrency(r.Amount);
+    });
+    return Object.entries(map)
+      .map(([reason, v]) => ({ reason, ...v }))
+      .sort((a, b) => b.count - a.count);
+  },
+
+  _reasonList(groups, total) {
+    if (!groups.length) return `<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No refund data for this month.</p></div>`;
+    return `
+      <ul style="list-style:none; margin:0; padding:0;">
+        ${groups.map((g) => {
+          const pct = total ? Math.round((g.count / total) * 100) : 0;
+          return `
+            <li style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 4px; border-bottom:1px solid var(--grid, rgba(148,163,184,.15));">
+              <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                <span style="width:8px; height:8px; border-radius:50%; background:var(--accent, #E42128); flex-shrink:0;"></span>
+                <span style="font-weight:500;">${g.reason}</span>
+              </div>
+              <div style="white-space:nowrap; color:var(--text-muted, #94a3b8); font-size:13px;">
+                <b style="color:inherit;">${Utils.fmtNumber(g.count)}</b> request${g.count !== 1 ? "s" : ""}
+                &nbsp;·&nbsp; ${Utils.fmtCurrency(g.amount, "USD")}
+                &nbsp;·&nbsp; ${pct}%
+              </div>
+            </li>`;
+        }).join("")}
+      </ul>`;
+  },
+
+  // ---- supporting charts (kept — only the reasons pie chart was removed) ------------------------------------------------
+
+  _renderCharts(rows) {
+    const byCountry = Utils.groupBy(rows, "Country");
+    Charts.bar("chRefundCountry", Object.keys(byCountry), [{ label: "Refunds", data: Object.values(byCountry).map((g) => g.length) }]);
+
+    const byStatus = Utils.groupBy(rows, "Status");
+    Charts.donut("chRefundStatus", Object.keys(byStatus), Object.values(byStatus).map((g) => g.length));
+  },
+
+  // ---- waiting period (computed fresh from today's date every render —
+  // never stored, so it automatically stays correct as days pass) ------------------------------------------------
+
+  _daysSince(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d)) return null;
+    const today = new Date();
+    const diff = Math.floor(
+      (Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
+        Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000
+    );
+    return diff;
+  },
+
+  _waitingLabel(r) {
+    const days = this._daysSince(r.Date);
+    if (days === null) return "—";
+    const status = String(r.Status || "").toLowerCase();
+    if (status === "pending") return `${days} day${days !== 1 ? "s" : ""} waiting`;
+    return `${days} day${days !== 1 ? "s" : ""} since request`;
+  },
+
+  // ---- helpers ------------------------------------------------
+
+  _parseCurrency(v) {
+    if (v === null || v === undefined || v === "") return 0;
+    const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  },
+};
